@@ -1,37 +1,25 @@
+from collections import defaultdict
+
 import sqlglot
 from sqlglot import exp
 from sqlglot.dialects.sqlite import SQLite
 
 from cantrip.implementations.base import BaseSemanticLayer
-from cantrip.models import Metric, Dimension, Filter, Relation, Sort, Query
+from cantrip.models import (
+    Dimension,
+    Relation,
+    SemanticView,
+)
 
 
 class SQLiteSemanticLayer(BaseSemanticLayer):
 
     dialect = SQLite()
 
-    def get_views(self) -> dict[Relation, exp.Select]:
-        views: dict[str, exp.Select] = {}
+    def get_semantic_views(self) -> set[SemanticView]:
+        return {SemanticView("semantic_view")}
 
-        for name, sql in self.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type='view'"
-        ):
-            ast = sqlglot.parse_one(sql, self.dialect)
-            if isinstance(ast, exp.Create) and isinstance(ast.expression, exp.Select):
-                views[Relation(name, "main")] = ast.expression
-
-        return views
-
-    def get_metrics(self) -> set[Metric]:
-        metrics: set[Metric] = set()
-
-        for ast in self.get_views().values():
-            if metric := self.get_metric_from_view(ast):
-                metrics.add(metric)
-
-        return metrics
-
-    def get_dimensions(self) -> set[Dimension]:
+    def get_dimensions(self, semantic_view: SemanticView) -> set[Dimension]:
         sql = """
 WITH fk_relations AS (
   SELECT
@@ -81,18 +69,99 @@ FROM dimensions;
 
         return dimensions
 
-    def get_metrics_for_dimensions(self, dimensions: set[Dimension]) -> set[Metric]: ...
-
-    def get_dimensions_for_metrics(self, metrics: set[Metric]) -> set[Dimension]: ...
-
-    def get_query(
+    def get_dimensions_per_relation(
         self,
-        metrics: set[Metric],
-        dimensions: set[Dimension],
-        filters: set[Filter],
-        sort: Sort,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> Query: ...
+        semantic_view: SemanticView,
+    ) -> dict[Relation, set[Dimension]]:
+        sql = """
+WITH fk_relations AS (
+  SELECT
+    m.name AS fact_table,
+    fk."table" AS dimension_table,
+    fk."from" AS fk_column,
+    fk."to" AS dimension_column
+  FROM sqlite_master m
+  JOIN pragma_foreign_key_list(m.name) fk
+  WHERE m.type = 'table'
+),
 
-    def get_query_from_standard_sql(self, sql: str) -> Query: ...
+dimension_columns AS (
+  SELECT
+    m.name AS dimension_table,
+    p.name AS column_name
+  FROM sqlite_master m
+  JOIN pragma_table_info(m.name) p
+  WHERE m.type = 'table'
+),
+
+fk_and_columns AS (
+  SELECT
+    fk.fact_table,
+    fk.dimension_table,
+    dc.column_name
+  FROM fk_relations fk
+  JOIN dimension_columns dc
+    ON fk.dimension_table = dc.dimension_table
+),
+
+referenced_columns AS (
+  SELECT DISTINCT
+    fact_table,
+    dimension_table,
+    dimension_column AS column_name
+  FROM fk_relations
+),
+
+filtered_columns AS (
+  SELECT
+    fkc.fact_table,
+    fkc.dimension_table,
+    fkc.column_name
+  FROM fk_and_columns fkc
+  LEFT JOIN referenced_columns rc
+    ON fkc.fact_table = rc.fact_table
+    AND fkc.dimension_table = rc.dimension_table
+    AND fkc.column_name = rc.column_name
+  WHERE rc.column_name IS NULL
+)
+
+SELECT
+  fact_table,
+  dimension_table,
+  column_name
+FROM filtered_columns;
+        """
+
+        dimensions: dict[Relation, set[Dimension]] = defaultdict(set)
+
+        for row in self.execute(sql):
+            relation = Relation(
+                row["fact_table"],
+                self.default_schema,
+                self.default_catalog,
+            )
+            table = self.quote(row["dimension_table"])
+            column = self.quote(row["column_name"])
+            name = f"{table}.{column}"
+            dimensions[relation].add(Dimension(name))
+
+        return dimensions
+
+    def get_default_schema(self) -> str:
+        return "main"
+
+    def get_default_catalog(self) -> None:
+        return None
+
+    def get_views(self) -> dict[Relation, exp.Select]:
+        views: dict[str, exp.Select] = {}
+
+        for name, sql in self.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='view'"
+        ):
+            relation = Relation(name, self.default_schema, self.default_catalog)
+            ast = sqlglot.parse_one(sql, self.dialect)
+            if isinstance(ast, exp.Create) and isinstance(ast.expression, exp.Select):
+                views[relation] = ast.expression
+
+        return views

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 class SemanticView:
 
     name: str
+    description: str | None = None
 
 
 @dataclass(frozen=True)

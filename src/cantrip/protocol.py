@@ -1,13 +1,12 @@
 from typing import Protocol
 
-from sqlalchemy.engine import Engine
-
 from cantrip.models import Metric, Dimension, Filter, SemanticView, Sort, Query
 
 
 class SemanticLayer(Protocol):
-
-    def __init__(self, view: SemanticView, engine: Engine): ...
+    """
+    A generic protocol for semantic layers.
+    """
 
     def get_semantic_views(self) -> set[SemanticView]:
         """
@@ -15,25 +14,35 @@ class SemanticLayer(Protocol):
         """
         ...
 
-    def get_metrics(self) -> set[Metric]:
+    def get_metrics(self, semantic_view: SemanticView) -> set[Metric]:
         """
         Returns a set of all available metrics.
         """
         ...
 
-    def get_dimensions(self) -> set[Dimension]:
+    def get_dimensions(self, semantic_view: SemanticView) -> set[Dimension]:
         """
         Returns a set of all available dimensions.
         """
         ...
 
-    def get_metrics_for_dimensions(self, dimensions: set[Dimension]) -> set[Metric]:
+    def get_valid_metrics(
+        self,
+        semantic_view: SemanticView,
+        metrics: set[Metric],
+        dimensions: set[Dimension],
+    ) -> set[Metric]:
         """
-        Return compatible metrics for the given dimensions.
+        Return compatible metrics for the given metrics and dimensions.
         """
         ...
 
-    def get_dimensions_for_metrics(self, metrics: set[Metric]) -> set[Dimension]:
+    def get_valid_dimensions(
+        self,
+        semantic_view: SemanticView,
+        metrics: set[Metric],
+        dimensions: set[Dimension],
+    ) -> set[Dimension]:
         """
         Return compatible dimensions for the given metrics.
         """
@@ -41,10 +50,11 @@ class SemanticLayer(Protocol):
 
     def get_query(
         self,
+        semantic_view: SemanticView,
         metrics: set[Metric],
         dimensions: set[Dimension],
-        filters: set[Filter],
         # populations: set[Population],
+        filters: set[Filter],
         sort: Sort,
         limit: int | None = None,
         offset: int | None = None,
@@ -54,7 +64,11 @@ class SemanticLayer(Protocol):
         """
         ...
 
-    def get_query_from_standard_sql(self, sql: str) -> Query:
+    def get_query_from_standard_sql(
+        self,
+        semantic_view: SemanticView,
+        sql: str,
+    ) -> Query:
         """
         Build a SQL query from a pseudo-query referencing metrics and dimensions.
 
