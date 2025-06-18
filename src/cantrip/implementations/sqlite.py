@@ -179,3 +179,24 @@ FROM filtered_columns;
                 views[relation] = ast.expression
 
         return views
+
+    def get_dimension_joins(self) -> dict[Relation, set[exp.Join]]:
+        sql = """
+WITH tables AS (
+  SELECT name FROM sqlite_master WHERE type='table'
+)
+SELECT
+  t.name AS table_name,
+  fk."from" AS fk_column,
+  fk."table" AS referenced_table,
+  fk."to" AS referenced_column
+FROM tables t
+JOIN pragma_foreign_key_list(t.name) fk;
+        """
+
+        output = defaultdict(set)
+
+        for row in self.execute(sql):
+            table = Relation(row["table_name"], self.default_schema, self.default_catalog)
+            output[table].add(
+

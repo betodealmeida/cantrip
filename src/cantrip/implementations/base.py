@@ -170,16 +170,31 @@ class BaseSemanticLayer:
                 ]
                 where = None
 
-            queries.append(
-                exp.Select(
-                    **{
-                        "expressions": expressions,
-                        "from": context[0],
-                        "joins": context[1],
-                        "where": where,
-                    }
-                )
+            query = exp.Select(
+                **{
+                    "expressions": expressions,
+                    "from": context[0],
+                    "joins": context[1],
+                    "where": where,
+                }
             )
+
+            # select and group by dimensions
+            group = query.args.setdefault("group", exp.Group())
+            for dimension in dimensions:
+                column = exp.Column(
+                    this=exp.Identifier(
+                        this=dimension.column,
+                        table=dimension.table,
+                    )
+                )
+                query.expressions.append(column)
+                group.expressions.append(column)
+
+            # and perform necessary joins
+            fact_tables = {table for metric in metrics for table in metric.tables}
+
+            queries.append(query)
 
         # combine context queries
         if len(queries) == 1:
@@ -217,6 +232,7 @@ class BaseSemanticLayer:
                 }
             )
         else:
+            # TODO: handle dimensions
             query = exp.Select(
                 expressions=[
                     exp.Alias(
@@ -229,31 +245,22 @@ class BaseSemanticLayer:
                 ]
             )
 
-        # select and group by dimensions
-        group = query.args.setdefault("group", [])
-        for dimension in dimensions:
-            query.expressions.append(
-                exp.Column(this=exp.Identifier(this=dimension.name))
-            )
-            group.append(exp.Column(this=dimension.name))
-
-        # and perform necessary joins
-
         # filters: set[Filter],
 
         if sort:
-            query = query.sort(
-                *[
-                    exp.Order(
-                        this=exp.Column(this=field.name),
-                        desc=sort.direction == SortDirectionEnum.DESC,
-                    )
-                    for field in sort.fields
-                ]
-            )
+            order = [
+                exp.Ordered(
+                    this=exp.Column(this=exp.Identifier(this=field.name)),
+                )
+                for field in sort.fields
+            ]
+            order[-1].desc(sort.direction == SortDirectionEnum.DESC)
+            query.args["order"] = exp.Order(expressions=order)
 
-        query = query.offset(offset) if offset is not None else query
-        query = query.limit(limit) if limit is not None else query
+        if offset:
+            query = query.offset(offset)
+        if limit:
+            query = query.limit(limit)
 
         return Query(sql=query.sql())
 
