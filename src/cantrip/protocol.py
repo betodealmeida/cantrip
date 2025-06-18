@@ -34,6 +34,8 @@ class SemanticLayer(Protocol):
     ) -> set[Metric]:
         """
         Return compatible metrics for the given metrics and dimensions.
+
+        For metrics to be valid they must be compatible with all the provided dimensions.
         """
         ...
 
@@ -45,6 +47,8 @@ class SemanticLayer(Protocol):
     ) -> set[Dimension]:
         """
         Return compatible dimensions for the given metrics.
+
+        For dimensions to be valid they must be compatible with all the provided metrics.
         """
         ...
 

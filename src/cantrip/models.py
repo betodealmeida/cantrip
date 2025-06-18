@@ -21,15 +21,22 @@ class Relation:
 class Metric:
 
     name: str
-    expression: str
-    parents: set[Relation]
+    sql: str
     tables: set[Relation]
+
+
+class Grain:
+    pass
 
 
 @dataclass(frozen=True)
 class Dimension:
 
+    table: Relation
+    column: str
     name: str
+    grains: set[Grain]
+    grain: Grain | None = None
 
 
 class FilterTypeEnum(enum.Enum):
@@ -54,7 +61,7 @@ class SortDirectionEnum(enum.Enum):
 @dataclass(frozen=True)
 class Sort:
 
-    fields: list[str]
+    fields: list[Metric | Dimension]
     direction: SortDirectionEnum
 
 

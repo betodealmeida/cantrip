@@ -17,7 +17,7 @@ FROM fact_orders;
             Metric(
                 "total_revenue",
                 "SUM(quantity * unit_price * (1 - discount) + tax_amount)",
-                {Relation("fact_orders")},
+                Relation("fact_orders"),
                 {Relation("fact_orders")},
             ),
         ),
@@ -31,12 +31,7 @@ JOIN (
 ) sub
 ON t.id = sub.id;
             """,
-            Metric(
-                "total_orders",
-                "COUNT(*)",
-                {Relation("my_table"), Relation("other_table")},
-                {Relation("my_table"), Relation("other_table")},
-            ),
+            None,
         ),
     ],
 )

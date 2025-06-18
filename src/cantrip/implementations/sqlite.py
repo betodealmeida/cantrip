@@ -16,6 +16,8 @@ class SQLiteSemanticLayer(BaseSemanticLayer):
 
     dialect = SQLite()
 
+    supports_filter_clause = True
+
     def get_semantic_views(self) -> set[SemanticView]:
         return {SemanticView("semantic_view")}
 
@@ -65,11 +67,17 @@ FROM dimensions;
             table = self.quote(row["table_name"])
             column = self.quote(row["column_name"])
             name = f"{table}.{column}"
-            dimensions.add(Dimension(name))
+            dimensions.add(
+                Dimension(
+                    table=Relation(table, self.default_schema, self.default_catalog),
+                    column=row["column_name"],
+                    name=name,
+                )
+            )
 
         return dimensions
 
-    def get_dimensions_per_relation(
+    def get_dimensions_per_table(
         self,
         semantic_view: SemanticView,
     ) -> dict[Relation, set[Dimension]]:
@@ -143,7 +151,13 @@ FROM filtered_columns;
             table = self.quote(row["dimension_table"])
             column = self.quote(row["column_name"])
             name = f"{table}.{column}"
-            dimensions[relation].add(Dimension(name))
+            dimensions[relation].add(
+                Dimension(
+                    table=Relation(table, self.default_schema, self.default_catalog),
+                    column=row["column_name"],
+                    name=name,
+                )
+            )
 
         return dimensions
 
